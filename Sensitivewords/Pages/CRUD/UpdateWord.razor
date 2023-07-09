@@ -1,0 +1,88 @@
+﻿@page "/UpdateWord/{Id:int}"
+
+@inject HttpClient client
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JsRuntime
+
+@using Newtonsoft.Json
+@using Data
+@using Syncfusion.Blazor
+@using Syncfusion.Blazor.Grids
+@using System.Text.RegularExpressions;
+
+<div class="col-md-12">
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">Update Word</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Id</th>
+                            <th>Word</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr @key="data.Id">
+                            <td>@data.Id</td>
+                            <td><InputText id="FirstName" class="form-control" @bind-Value="@data.Word" placeholder="Enter Word"></InputText></td>
+                            <td><button type="button" class="btn btn-outline-secondary" @onclick="UpdateWords">Update</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    [Parameter] public int Id { get; set; }
+    SensitiveWords data = new SensitiveWords();
+
+    protected override void OnInitialized()
+    {
+        GetWords();
+        base.OnInitialized();
+    }
+    private async void GetWords()
+    {
+        string apiName = string.Format("api/SensitiveWordItems/{0}", Id);
+        var httpResponse = await client.GetAsync(apiName);
+
+        if (httpResponse.IsSuccessStatusCode)
+        {
+            data = (SensitiveWords)JsonConvert.DeserializeObject(await httpResponse.Content.ReadAsStringAsync(), typeof(SensitiveWords));
+
+            StateHasChanged();
+        }
+    }
+    private async void UpdateWords()
+    {
+        if (!string.IsNullOrEmpty(data.Word))
+        {
+            if (Regex.IsMatch(data.Word, @"^[a-zA-Z0-9\s.\?\,\'\;\:\!\-]+$") && !data.Word.Contains(" "))
+            {
+                string apiName = string.Format("api/SensitiveWordItems/{0}", Id);
+                var httpResponse = await client.PutAsJsonAsync(apiName, data);
+
+                if (httpResponse.IsSuccessStatusCode)
+                {
+                    await JsRuntime.InvokeVoidAsync("alert", "Record updated succesfully!!");
+                    NavigationManager.NavigateTo("/SensitiveWordsGrid");
+                }
+            }
+            else
+            {
+                await JsRuntime.InvokeVoidAsync("alert", "Special Characters are not allowed, including spaces: " + data.Word);
+            }
+        }
+        else
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Special Characters are not allowed, including spaces: " + data.Word);
+        }
+    }
+}

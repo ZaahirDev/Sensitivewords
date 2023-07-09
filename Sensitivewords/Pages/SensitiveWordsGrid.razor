@@ -1,0 +1,210 @@
+﻿@page "/"
+@page "/SensitiveWordsGrid"
+
+@inject HttpClient client
+@inject IJSRuntime JsRuntime
+@inject NavigationManager NavigationManager
+
+@using Newtonsoft.Json
+@using Data
+@using Syncfusion.Blazor
+@using Syncfusion.Blazor.Grids
+@using System.Text.RegularExpressions;
+
+<div class="col-md-12">
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title">Sensitive Words</h5>
+            <p>Login <input @bind="@isChecked" class="form-check-input form-check-label" type="checkbox" @bind:after="Login" /></p>
+        </div>
+
+        <div class="card-body">
+            <table style="visibility:@visibleValue">
+                <tbody>
+                    <tr>
+                        <td><input @bind=@Word class="form-control" type="text" placeholder="Add word..."></td>
+                        <td><button class="btn btn-success" @onclick="@(e => AddWord(Word))">Add</button></td>
+                        <td> <button class="btn btn-danger" @onclick="(ClearTextBox)">Clear</button></td>
+                    </tr>
+
+                </tbody>
+            </table>
+
+            <br><p><u>Bloop out sensitive word(s) below:</u></p>
+            <table class="table table-bordered">
+                <tbody>
+
+                    <tr>
+                        <td><input @bind=@sentences class="form-control" type="text" placeholder="Enter word..."></td>
+                        <td><button class="btn btn-success" @onclick="@(WordReplacement)">Submit</button></td>
+                        <td><button class="btn btn-danger" @onclick="(ClearTextBox)">Clear</button></td>
+                    </tr>
+                </tbody>
+            </table>
+            <p><u><b>Result:</b></u></p>
+            <label>@replacedValue</label>
+
+            <div class="row">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Id</th>
+                            <th>Word</th>
+                            <th style="visibility:@visibleValue">Edit</th>
+                            <th style="visibility:@visibleValue">Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var word in data)
+                        {
+                            <tr @key="word.Id">
+                                <td>@word.Id</td>
+                                <td>@word.Word</td>
+                                <td style="visibility:@visibleValue"><a class="btn btn-warning" href="/UpdateWord/@word.Id">Edit</a></td>
+                                <td style="visibility:@visibleValue"><button type="button" class="btn btn-danger" @onclick="@(e => DeleteWord(word.Id,word.Word))">Delete</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="row">
+            </div>
+        </div>
+    </div>
+</div>
+@code {
+
+    List<SensitiveWords> data = new List<SensitiveWords>();
+    string apiName = "api/SensitiveWordItems";
+    bool PopupVisible { get; set; }
+    public string sentences { get; set; } = string.Empty;
+    public string replacedValue { get; set; } = string.Empty;
+    bool isChecked { get; set; }
+    bool isAdmin { get; set; } = false;
+    public string visibleValue { get; set; } = "hidden";
+
+    protected override void OnInitialized()
+    {
+        this.isAdmin = false;
+        GetWords();
+        base.OnInitialized();
+    }
+    private async void GetWords()
+    {
+        var httpResponse = await client.GetAsync(apiName);
+
+        if (httpResponse.IsSuccessStatusCode)
+        {
+            data = (List<SensitiveWords>)Newtonsoft.Json.JsonConvert.DeserializeObject(await httpResponse.Content.ReadAsStringAsync(), typeof(List<SensitiveWords>));
+            StateHasChanged();
+        }
+    }
+    private async void DeleteWord(int Id, string word)
+    {
+        string apiName = string.Format("api/SensitiveWordItems/{0}", Id);
+        var httpResponse = await client.DeleteAsync(apiName);
+        var test = httpResponse.IsSuccessStatusCode;
+        if (httpResponse.IsSuccessStatusCode)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Succesfully deleted word: " + word);
+            GetWords();
+        }
+    }
+    private async void AddWord(string senitiveWord)
+    {
+        string apiName = string.Empty;
+        //Validate Special Characters
+        if (Regex.IsMatch(senitiveWord, @"^[a-zA-Z0-9\s.\?\,\'\;\:\!\-]+$") && !senitiveWord.Contains(" "))
+        {
+            string result = data.FirstOrDefault(s => s.Word.ToLower().Equals(senitiveWord.ToLower()))?.Word;
+
+            if (string.IsNullOrEmpty(result))
+            {
+                var postBody = new { word = senitiveWord };
+                apiName = string.Format("api/SensitiveWordItems");
+                using var response = await client.PostAsJsonAsync(apiName, postBody);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    await JsRuntime.InvokeVoidAsync("alert", "Succesfully added word: " + senitiveWord);
+                    this.Word = string.Empty;
+                    StateHasChanged();
+                    GetWords();
+                }
+            }
+            else
+            {
+                await JsRuntime.InvokeVoidAsync("alert", "Word already exists!!" + senitiveWord);
+            }
+
+
+        }
+        else
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Special Characters are not allowed, including spaces: " + senitiveWord);
+            this.Word = string.Empty;
+            StateHasChanged();
+        }
+    }
+    private void WordReplacement()
+    {
+        String[] word = sentences.Split(' ');
+        var wordValue = string.Empty;
+        int counter = 0;
+        this.replacedValue = string.Empty;
+        StateHasChanged();
+
+        foreach (var value in word)
+        {
+            wordValue = data.Find(x => x.Word.ToLower().Equals(value.ToLower()))?.Word;
+
+            if (!string.IsNullOrEmpty(wordValue))
+            {
+                replacedValue += new string('*', wordValue.Length);
+                replacedValue += ' ';
+            }
+            else
+            {
+                replacedValue += word[counter] + ' ';
+            }
+            counter++;
+        }
+    }
+    private async void Login()
+    {
+        StateHasChanged();
+        if (isChecked)
+        {
+            var input = await JsRuntime.InvokeAsync<string>("prompt", "Please enter password below:");
+            if (input.ToLower().Equals("admin"))
+            {
+                this.visibleValue = "visible";
+                StateHasChanged();
+            }
+            else
+            {
+                this.visibleValue = "hidden";
+                await JsRuntime.InvokeVoidAsync("alert", "You are unauthorised!!");
+                this.isChecked = false;
+                StateHasChanged();
+            }
+        }
+        else
+        {
+            this.visibleValue = "hidden";
+            StateHasChanged();
+        }
+    }
+    private void ClearTextBox()
+    {
+        this.Word = string.Empty;
+        this.sentences = string.Empty;
+        this.replacedValue = string.Empty;
+        StateHasChanged();
+    }
+}
+@code {
+    [Parameter]
+    public string Word { get; set; } = string.Empty;
+}
